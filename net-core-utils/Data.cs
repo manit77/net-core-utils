@@ -16,30 +16,15 @@ namespace CoreUtils
 
     public static class Data
     {
-
-        public static int CalculateAge(DateTime dob)
-        {
-            var today = DateTime.Today;
-            var age = today.Year - dob.Year;
-            if (dob > today.AddYears(-age))
+        public static int CalculateAge(DateTime dob, DateTime? ageAtDate = null)
+        {            
+            var now = ageAtDate ?? DateTime.Today;
+            var age = now.Year - dob.Year;
+            if (dob > now.AddYears(-age))
             {
                 age--;
             }
             return age;
-        }
-
-        /// <summary>
-        /// returns empty string when null
-        /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        public static string StringNoNull(string value)
-        {
-            if (value == null)
-            {
-                return string.Empty;
-            }
-            return value;
         }
 
         public static DateTime SQLMinDateTime { get { return new DateTime(1753, 1, 1); } }
@@ -93,6 +78,13 @@ namespace CoreUtils
             return inval;
         }
 
+        /// <summary>
+        /// Will cast an object, if the object is null or dbnull return the default(T)
+        /// This function will not convert from one datatype to another
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <returns></returns>
         public static T CastIt<T>(object value)
         {
             T outputIfNull = default(T);

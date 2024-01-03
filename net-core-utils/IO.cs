@@ -1,18 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.ComponentModel;
-using System.Security;
-using System.Security.Permissions;
+﻿using System.IO;
 
 namespace CoreUtils
 {
