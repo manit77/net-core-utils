@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.ComponentModel;
 using System.Reflection;
+using System.Diagnostics;
 
 namespace CoreUtils
 {
@@ -143,6 +144,13 @@ namespace CoreUtils
             return rv;
         }
 
+        /// <summary>
+        /// parse from one datatype to another
+        /// will return a default(T) if null or dbnull
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <returns></returns>
         public static T ParseIt<T>(object value)
         {
             return ParseIt<T>(value, default(T));
@@ -170,15 +178,16 @@ namespace CoreUtils
 
             try
             {
-                if (Nullable.GetUnderlyingType(typeof(T)) != null)
+                if (Nullable.GetUnderlyingType(typeof(T)) != null || typeof(T) == typeof(DateTimeOffset))
                 {
                     return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(value);
                 }
-
+                
                 return (T)Convert.ChangeType(value, typeof(T));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.WriteLine(ex);
                 return outputifnull;
             }
         }

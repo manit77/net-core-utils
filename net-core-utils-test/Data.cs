@@ -112,5 +112,69 @@ namespace net_core_utils_test
             Assert.AreEqual(0, CoreUtils.Data.CastIt<float>(val));
         }
 
+        [TestMethod]
+        public void TestParseIt()
+        {
+            object? val = null;
+            //null
+            Assert.AreEqual(0, CoreUtils.Data.ParseIt<int>(val));            
+
+            //DBNull
+            val = DBNull.Value;
+            Assert.AreEqual(0, CoreUtils.Data.ParseIt<int>(val));
+
+            //int
+            val = "123";
+            Assert.AreEqual(123, CoreUtils.Data.ParseIt<int>(val));
+
+            val = "";
+            Assert.AreEqual(null, CoreUtils.Data.ParseIt<int?>(val));
+
+            val = "-123.56"; //will result in null
+            Assert.AreEqual(null, CoreUtils.Data.ParseIt<int?>(val));
+
+            val = "-123.56"; //will result in 0
+            Assert.AreEqual(0, CoreUtils.Data.ParseIt<int>(val));
+
+            val = "-456";
+            Assert.AreEqual(-456, CoreUtils.Data.ParseIt<int>(val));
+
+            //decimal
+            val = "123";
+            Assert.AreEqual(123M, CoreUtils.Data.ParseIt<decimal>(val));
+
+            //float
+            val = "123"; //string to float
+            Assert.AreEqual(123f, CoreUtils.Data.ParseIt<float>(val));
+
+            val = 123f; //float to float
+            Assert.AreEqual(123f, CoreUtils.Data.ParseIt<float>(val));
+
+            val = 123; //int to float
+            Assert.AreEqual(123f, CoreUtils.Data.ParseIt<float>(val));
+
+            val = "123.7698"; //string to float
+            Assert.AreEqual(123.7698f, CoreUtils.Data.ParseIt<float>(val));
+
+            //DateTime            
+            val = "123"; //cannot parse 123 to datetime, this will result in DateTime.MinValue
+            Assert.AreEqual(DateTime.MinValue, CoreUtils.Data.ParseIt<DateTime>(val));
+
+            val = "1/20/2021 9:48:05 PM"; //string to DateTime
+            Assert.AreEqual(new DateTime(2021, 1, 20, 21, 48, 5), CoreUtils.Data.ParseIt<DateTime>(val));
+                       
+            val = ""; //cannot parse empty string, nullable DateTime will return a null
+            Assert.AreEqual(null, CoreUtils.Data.ParseIt<DateTime?>(val));
+
+            //DateTimeOffset
+            val = ""; //cannot parse empty string
+            Assert.AreEqual(null, CoreUtils.Data.ParseIt<DateTimeOffset?>(val));
+                        
+            var cdate = DateTimeOffset.Parse("2024-01-02 10:17 PM");
+            val = cdate.ToString();            
+            Assert.AreEqual(cdate, CoreUtils.Data.ParseIt<DateTimeOffset>(val));
+
+        }
+
     }
 }
