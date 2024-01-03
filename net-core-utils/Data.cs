@@ -382,5 +382,10 @@ namespace CoreUtils
         {         
             return Encoding.UTF8.GetString(Convert.FromBase64String(base64EncodedData));
         }
+
+        public static string FindReplaceEx(string source, string findRegEx, string replacewith)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(source, findRegEx, replacewith);
+        }
     }
 }

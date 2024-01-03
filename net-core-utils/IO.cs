@@ -39,5 +39,23 @@ namespace CoreUtils
                 File.Delete(path);
             }
         }
+
+        public static string ReadFile(string path)
+        {
+            if (File.Exists(path))
+            {
+                return File.ReadAllText(path);
+            }
+
+            return "";
+        }
+        public static string[] GetFiles(string dir)
+        {
+            if (Directory.Exists(dir))
+            {
+                return Directory.GetFiles(dir);
+            }
+            return [];
+        }
     }
 }
