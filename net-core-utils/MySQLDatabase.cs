@@ -148,7 +148,7 @@ namespace CoreUtils {
         /// <typeparam name="T"></typeparam>
         /// <param name="r"></param>
         /// <returns></returns>
-        public List<T> Query<T> (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) where T : class {
+        public IEnumerable<T> Query<T> (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) {
             List<T> list = new List<T>();
             IDataReader r = null;
             try {

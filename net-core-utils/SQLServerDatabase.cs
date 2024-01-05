@@ -139,54 +139,70 @@ namespace CoreUtils {
 
         public Dictionary<Type, List<System.Reflection.PropertyInfo>> CachedModels = new Dictionary<Type, List<System.Reflection.PropertyInfo>>();
 
+        public IEnumerable<T> Query<T>(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) // where T : class
+        {
+            using IDbConnection conn = GetConnection();
+            Type type = typeof(T);
+            if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+            {
+                throw new Exception("Generic list is not support. Get SQLDataReader and convert to list.");
+            }
+            var dapperParams = new Dapper.DynamicParameters();
+            foreach (var p in parameters)
+            {
+                dapperParams.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
+            }
+            return Dapper.SqlMapper.Query<T>(conn, "GetAuthUserByUserName", dapperParams, null, true, null, CommandType.StoredProcedure);
+        }
+
         /// <summary>
         /// you're better off using Dapper it's a lot faster
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="r"></param>
         /// <returns></returns>
-        public List<T> Query<T> (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) where T : class {
-            List<T> list = new List<T>();
-            IDataReader r = null;
-            try {
-                r = GetDataReader(sql, parameters, commandType);
+        //public List<T> Query<T> (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) where T : class {
+        //    List<T> list = new List<T>();
+        //    IDataReader r = null;
+        //    try {
+        //        r = GetDataReader(sql, parameters, commandType);
 
-                object instance;
-                object value;
-                Type type = typeof(T);
-                List<System.Reflection.PropertyInfo> listOfProps = null;
+        //        object instance;
+        //        object value;
+        //        Type type = typeof(T);
+        //        List<System.Reflection.PropertyInfo> listOfProps = null;
 
-                if (CachedModels.TryGetValue(type, out listOfProps) == false) {
-                    listOfProps = new List<System.Reflection.PropertyInfo>();
-                    listOfProps.AddRange(type.GetProperties());
-                    CachedModels.TryAdd(type, listOfProps);
-                }
+        //        if (CachedModels.TryGetValue(type, out listOfProps) == false) {
+        //            listOfProps = new List<System.Reflection.PropertyInfo>();
+        //            listOfProps.AddRange(type.GetProperties());
+        //            CachedModels.TryAdd(type, listOfProps);
+        //        }
 
-                while (r.Read()) {
-                    instance = Activator.CreateInstance(type);
+        //        while (r.Read()) {
+        //            instance = Activator.CreateInstance(type);
 
-                    foreach (var property in listOfProps) {
-                        value = r[property.Name];
-                        if (value == DBNull.Value) {
-                            value = null;
-                        }
-                        property.SetValue(instance, value);
-                    }
-                    list.Add((T)instance);
-                }
-                r.Close();
-                r.Dispose();
-            } catch {
-                try {
-                    if (r != null) {
-                        r.Close();
-                        r.Dispose();
-                    }
-                } catch { }
+        //            foreach (var property in listOfProps) {
+        //                value = r[property.Name];
+        //                if (value == DBNull.Value) {
+        //                    value = null;
+        //                }
+        //                property.SetValue(instance, value);
+        //            }
+        //            list.Add((T)instance);
+        //        }
+        //        r.Close();
+        //        r.Dispose();
+        //    } catch {
+        //        try {
+        //            if (r != null) {
+        //                r.Close();
+        //                r.Dispose();
+        //            }
+        //        } catch { }
 
-                throw;
-            }
-            return list;
-        }
+        //        throw;
+        //    }
+        //    return list;
+        //}
     }
 }

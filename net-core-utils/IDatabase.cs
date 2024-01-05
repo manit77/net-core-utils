@@ -23,7 +23,8 @@ namespace CoreUtils
         public DataTable GetDataTable(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text);
         public DataSet GetDataSet(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text);
 
-        public List<T> Query<T>(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) where T : class;
+        public IEnumerable<T> Query<T>(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text);
+
     }
 
 }
