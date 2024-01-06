@@ -4,6 +4,7 @@ using System.Text;
 using System.ComponentModel;
 using System.Reflection;
 using System.Diagnostics;
+using System.Linq;
 
 namespace CoreUtils
 {
@@ -233,6 +234,10 @@ namespace CoreUtils
             return value.ToString();
         }
 
+        public static bool IsStringNullEmptySpaces(string value)
+        {
+            return string.IsNullOrEmpty(value) || string.IsNullOrWhiteSpace(value);
+        }
         public static void CopyProperties(object source, object destination)
         {
             CopyProperties(source: source, destination: destination, types: null);
@@ -245,15 +250,7 @@ namespace CoreUtils
 
             foreach (PropertyInfo sourcepi in sourceproperties)
             {
-                PropertyInfo destinationpi = null;
-
-                foreach (var pi in destinationproperties)
-                {
-                    if (pi.Name == sourcepi.Name && pi.GetType() == sourcepi.GetType())
-                    {
-                        destinationpi = pi;
-                    }
-                }
+                PropertyInfo destinationpi = destinationproperties.Where(pi => pi.Name == sourcepi.Name && pi.GetType() == sourcepi.GetType()).FirstOrDefault();
 
                 if (destinationpi == null)
                 {
@@ -280,7 +277,7 @@ namespace CoreUtils
                 else
                 {
                     if (destinationpi.CanWrite && (types == null || types.Contains(destinationpi.GetType())))
-                    {
+                    {                        
                         destinationpi.SetValue(destination, sourcepi.GetValue(source, null), null);
                     }
                 }
@@ -306,16 +303,7 @@ namespace CoreUtils
                 {
                     try
                     {
-
-                        PropertyInfo destinationpi = null;
-                        //find destination pi
-                        foreach (var pi in destinationproperties)
-                        {
-                            if (pi.Name == sourcepi.Name)
-                            {
-                                destinationpi = pi;
-                            }
-                        }
+                        PropertyInfo destinationpi = destinationproperties.Where(pi => pi.Name == sourcepi.Name && pi.GetType() == sourcepi.GetType()).FirstOrDefault();
 
                         if (destinationpi == null)
                         {

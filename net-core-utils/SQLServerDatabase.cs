@@ -142,17 +142,12 @@ namespace CoreUtils {
         public IEnumerable<T> Query<T>(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) // where T : class
         {
             using IDbConnection conn = GetConnection();
-            Type type = typeof(T);
-            if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
-            {
-                throw new Exception("Generic list is not support. Get SQLDataReader and convert to list.");
-            }
             var dapperParams = new Dapper.DynamicParameters();
             foreach (var p in parameters)
             {
                 dapperParams.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
             }
-            return Dapper.SqlMapper.Query<T>(conn, "GetAuthUserByUserName", dapperParams, null, true, null, CommandType.StoredProcedure);
+            return Dapper.SqlMapper.Query<T>(conn, sql, dapperParams, null, true, null, CommandType.StoredProcedure);
         }
 
         /// <summary>
