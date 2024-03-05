@@ -13,7 +13,7 @@ namespace CoreUtils
             return BCrypt.Net.BCrypt.HashPassword(password);
         }
 
-        public static bool BCryptVerif(string password, string hash)
+        public static bool BCryptVerify(string password, string hash)
         {
             return BCrypt.Net.BCrypt.Verify(password, hash);
         }
