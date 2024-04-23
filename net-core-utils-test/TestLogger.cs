@@ -105,6 +105,66 @@ namespace net_core_utils_test
 
         }
 
+        [TestMethod]
+        public void TestResumeLogs()
+        {
+            Directory.Delete("testlogs", true);
+
+            CoreUtils.LoggerFileWriter logger = new CoreUtils.LoggerFileWriter("testlogs", "testlog.txt", 200, 3);
+            var bytes = new byte[200];
+
+            string log = "Hello World! line1";
+            byte[] logBytes = Encoding.UTF8.GetBytes(log);
+            logBytes.CopyTo(bytes, 0);
+            string str = Encoding.UTF8.GetString(bytes);
+            logger.WriteLog(str);
+
+            log = "Hello World! line2";
+            logBytes = Encoding.UTF8.GetBytes(log);
+            logBytes.CopyTo(bytes, 0);
+            str = Encoding.UTF8.GetString(bytes);
+            logger.WriteLog(str);
+
+            log = "Hello World! line3";
+            logBytes = Encoding.UTF8.GetBytes(log);
+            logBytes.CopyTo(bytes, 0);
+            str = Encoding.UTF8.GetString(bytes);
+            logger.WriteLog(str);
+
+            var files = Directory.GetFiles("testlogs");
+            Assert.AreEqual(3, files.Length);
+
+            Assert.AreEqual("testlogs\\testlog_001.txt", files[0]);
+            Assert.AreEqual("testlogs\\testlog_002.txt", files[1]);
+            Assert.AreEqual("testlogs\\testlog_003.txt", files[2]);
+
+            logger.Dispose();
+            logger = new CoreUtils.LoggerFileWriter("testlogs", "testlog.txt", 200, 3);
+            //this will roll the logs
+            log = "Hello World! line4";
+            logBytes = Encoding.UTF8.GetBytes(log);
+            logBytes.CopyTo(bytes, 0);
+            str = Encoding.UTF8.GetString(bytes);
+            logger.WriteLog(str);
+
+            logger.Dispose();
+
+            files = Directory.GetFiles("testlogs");
+            Assert.AreEqual(3, files.Length);
+
+            Assert.AreEqual("testlogs\\testlog_001.txt", files[0]);
+            Assert.AreEqual("testlogs\\testlog_002.txt", files[1]);
+            Assert.AreEqual("testlogs\\testlog_003.txt", files[2]);
+
+            string contents = File.ReadAllText("testlogs\\testlog_001.txt");
+            Assert.IsTrue(contents.Contains("Hello World! line4"));
+
+            contents = File.ReadAllText("testlogs\\testlog_002.txt");
+            Assert.IsTrue(contents.Contains("Hello World! line3"));
+
+            contents = File.ReadAllText("testlogs\\testlog_003.txt");
+            Assert.IsTrue(contents.Contains("Hello World! line2"));
+        }
 
         [TestMethod]
         public void TestWriteLogPerfTest()

@@ -48,32 +48,13 @@ namespace CoreUtils
             //load defaults
             this.CurrentFileName = this.Template_Filename + "_" + "1".PadLeft(3, '0') + this.Template_Ext;
             this.CurrentFilePath = Path.Combine(this.CurrentDir, this.CurrentFileName);
-            this.CurrentFileSize = 0;
-            // this.CurrentFileIndex = 1;
+            this.CurrentFileSize = 0;            
 
-            string[] files = Directory.GetFiles(this.CurrentDir);
-
-            foreach (string f in files)
+            if(File.Exists(this.CurrentFilePath))
             {
-                string filename = Path.GetFileNameWithoutExtension(f);
-                string ext = Path.GetExtension(f);
-                string[] parts = filename.Split('_');
-                if (parts.Length > 1)
-                {
-                    string filenamepart = parts[0];
-                    string indexpart = parts[1];
-                    if (this.Template_Filename == filenamepart && this.Template_Ext == ext)
-                    {
-                        indexpart = indexpart.TrimStart('0');
-                        //this.CurrentFileIndex = int.Parse(indexpart);
-                        this.CurrentFilePath = f;
-                        this.CurrentFileName = Path.GetFileName(f);
-                        FileInfo fileInfo = new FileInfo(f);
-                        this.CurrentFileSize = fileInfo.Length;
-                    }
-                }
+                FileInfo fileInfo = new FileInfo(this.CurrentFilePath);
+                this.CurrentFileSize = fileInfo.Length;
             }
-
         }
 
         void IncrementFileCheck(long lengthToWrite)
