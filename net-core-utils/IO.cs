@@ -1,9 +1,18 @@
 ﻿using System.IO;
+using System.Text;
 
 namespace CoreUtils
 {
     public class IO
     {
+        public static void AppendTextFile(string path, string content)
+        {
+            using FileStream w = File.OpenWrite(path);
+            byte[] bytes = Encoding.UTF8.GetBytes(content);
+            w.Write(bytes);
+            w.Flush();
+        }
+
         public static void CreateDirectory(string path)
         {
             if (!Directory.Exists(path))
