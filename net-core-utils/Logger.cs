@@ -1,4 +1,5 @@
-﻿using Org.BouncyCastle.Crypto.Engines;
+﻿using Google.Protobuf.WellKnownTypes;
+using Org.BouncyCastle.Crypto.Engines;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,46 +12,55 @@ using System.Threading.Tasks;
 
 namespace CoreUtils
 {
+
+    public class LoggerFileWriterOptions
+    {
+        public string LogDir { get; set; } = "logs";
+        public string Template_Filename { get; set; } = "log_{date}.txt";
+        public string Template_Filename_Dateformat { get; set; } = "yyyyMMddHHmm";
+        public string Log_Dateformat { get; set; } = "yyyy-MM-dd-HH:mm:ss";
+        public int MaxFileSize { get; set; } = 100000000;
+        public int FilesToKeep { get; set; } = 10;
+        public Func<DateTime, string> FuncGetFileNameDateStr = null;
+    }
+
     public class LoggerFileWriter : IDisposable
     {
-        public string CurrentDir = "";
+
         public string CurrentFilePath = "";
         public string CurrentFileName = "";
-        // public int CurrentFileIndex = 0;
         public long CurrentFileSize = 0;
-        public string FileNameTemplate = "";
+        public int CurrentIndex = 1;
 
-        public long MaxFileSize = 0;
-        public long FilesToKeep = 0;
         string Template_Filename = "";
         string Template_Ext = "";
-
         public FileStream FSStream = null;
 
         object lockObj = new object();
+        byte[] newLine = null;
 
-        public LoggerFileWriter(string logDir = "logs", string filenameTemplate = "log.txt", int maxFileSizeBytes = 100000000, int filesToKeep = 10)
+        public LoggerFileWriterOptions Options { get; set; }
+
+        public LoggerFileWriter(LoggerFileWriterOptions opts)
         {
-            CoreUtils.IO.CreateDirectory(logDir);
-            this.CurrentDir = logDir;
-            this.FileNameTemplate = filenameTemplate;
-            this.MaxFileSize = maxFileSizeBytes;
-            this.FilesToKeep = filesToKeep;
-            this.Template_Filename = Path.GetFileNameWithoutExtension(this.FileNameTemplate);
-            this.Template_Ext = Path.GetExtension(this.FileNameTemplate);
+            this.Options = opts;
+            CoreUtils.IO.CreateDirectory(this.Options.LogDir);
+
+            this.Template_Filename = Path.GetFileNameWithoutExtension(this.Options.Template_Filename);
+            this.Template_Ext = Path.GetExtension(this.Options.Template_Filename);
 
             GetCurrentInfo();
             IncrementFileCheck(0);
+            newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
         }
 
         public void GetCurrentInfo()
         {
-            //load defaults
-            this.CurrentFileName = this.Template_Filename + "_" + "1".PadLeft(3, '0') + this.Template_Ext;
-            this.CurrentFilePath = Path.Combine(this.CurrentDir, this.CurrentFileName);
-            this.CurrentFileSize = 0;            
+            this.CurrentFileName = GetFileName(1);
+            this.CurrentFilePath = Path.Combine(this.Options.LogDir, this.CurrentFileName);
+            this.CurrentFileSize = 0;
 
-            if(File.Exists(this.CurrentFilePath))
+            if (File.Exists(this.CurrentFilePath))
             {
                 FileInfo fileInfo = new FileInfo(this.CurrentFilePath);
                 this.CurrentFileSize = fileInfo.Length;
@@ -60,7 +70,7 @@ namespace CoreUtils
         void IncrementFileCheck(long lengthToWrite)
         {
             bool increment = false;
-            if (this.CurrentFileSize + lengthToWrite > this.MaxFileSize)
+            if (this.CurrentFileSize + lengthToWrite > this.Options.MaxFileSize)
             {
                 increment = true;
             }
@@ -75,33 +85,70 @@ namespace CoreUtils
                     this.FSStream = null;
                 }
 
-                string filename = "";
-                string newfilename = "";
-
-                //move files 2 and up
-                for (int i = Convert.ToInt32(this.FilesToKeep) - 1; i > 0; i--)
+                //get all files that match the extension
+                List<FileInfo> infos = new List<FileInfo>();
+                string searchPattern = this.Template_Filename.Replace("{date}", "*").Replace("{index}", "*") + this.Template_Ext;
+                var filesWithExt = Directory.GetFiles(this.Options.LogDir, searchPattern);
+                foreach (var file in filesWithExt)
                 {
-                    filename = Path.Combine(this.CurrentDir, this.Template_Filename + "_" + i.ToString().PadLeft(3, '0') + Template_Ext);
-                    newfilename = Path.Combine(this.CurrentDir, this.Template_Filename + "_" + (i + 1).ToString().PadLeft(3, '0') + Template_Ext);
-                    if (File.Exists(filename))
-                    {
-                        File.Move(filename, newfilename, true);
-                    }
-                }                
-                
-                //this.CurrentFileName = this.Template_Filename + "_" + (1).ToString().PadLeft(3, '0') + Template_Ext;
-                //this.CurrentFilePath = Path.Combine(this.CurrentDir, this.CurrentFileName);
-                this.CurrentFileSize = 0;
+                    infos.Add(new FileInfo(file));
+                }
 
-                //delete the current file
+                var ordered = infos.OrderBy(f => f.CreationTime).ToArray();
+                if (ordered.Length >= this.Options.FilesToKeep)
+                {
+                    int deleteCount = (ordered.Length  - this.Options.FilesToKeep) + 1;
+                    for (int i = 0; i < deleteCount; i++)
+                    {
+                        File.Delete(ordered[i].FullName);
+                    }
+                }
+
+                string newFileName = "";
+                while (true)
+                {
+                    newFileName = GetFileName(this.CurrentIndex);
+                    if (File.Exists(Path.Combine(this.Options.LogDir, newFileName)))
+                    {
+                        this.CurrentIndex++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                this.CurrentFilePath = Path.Combine(this.Options.LogDir, newFileName);
+                this.CurrentFileName = newFileName;
+
                 if (File.Exists(this.CurrentFilePath))
                 {
-                    File.Delete(this.CurrentFilePath);
+                    FileInfo info = new FileInfo(this.CurrentFilePath);
+                    this.CurrentFileSize = info.Length;
+                } else
+                {
+                    this.CurrentFileSize = 0;
                 }
             }
         }
 
-        public void WriteLog(string log)
+        string GetFileNameDateString()
+        {
+            if (this.Options.FuncGetFileNameDateStr != null)
+            {
+                return this.Options.FuncGetFileNameDateStr(DateTime.Now);
+            }
+            return DateTime.Now.ToString(this.Options.Template_Filename_Dateformat);
+        }
+
+        string GetFileName(int index)
+        {
+            string dateString = this.GetFileNameDateString();
+            string indexString = index.ToString().PadLeft(3, '0');
+            return this.Template_Filename.Replace("{date}", dateString).Replace("{index}", indexString) + this.Template_Ext;
+        }
+
+        public void Write(string log)
         {
             lock (lockObj)
             {
@@ -114,11 +161,11 @@ namespace CoreUtils
                     this.FSStream = File.Open(this.CurrentFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
                     this.FSStream.Seek(0, SeekOrigin.End);
                 }
-                byte[] dateBytes = Encoding.UTF8.GetBytes(DateTime.Now.ToString("MM-dd-yyyy HH:mm:ss") + " - ");
+                byte[] dateBytes = Encoding.UTF8.GetBytes(DateTime.Now.ToString(this.Options.Log_Dateformat) + " - ");
 
                 this.FSStream.Write(dateBytes);
                 this.FSStream.Write(bytesToWrite);
-                this.FSStream.Write(Encoding.UTF8.GetBytes("\r\n"));
+                this.FSStream.Write(newLine);
                 this.FSStream.Flush();
 
                 this.CurrentFileSize += bytesToWrite.Length;
