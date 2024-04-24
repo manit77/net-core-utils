@@ -12,11 +12,10 @@ using System.Threading.Tasks;
 
 namespace CoreUtils
 {
-
     public class LoggerFileWriterOptions
     {
         public string LogDir { get; set; } = "logs";
-        public string Template_Filename { get; set; } = "log_{date}.txt";
+        public string Template_Filename { get; set; } = "log_{date}_{index}.txt";
         public string Template_Filename_Dateformat { get; set; } = "yyyyMMddHHmm";
         public string Log_Dateformat { get; set; } = "yyyy-MM-dd-HH:mm:ss";
         public int MaxFileSize { get; set; } = 100000000;
@@ -45,7 +44,10 @@ namespace CoreUtils
         public LoggerFileWriter(LoggerFileWriterOptions opts)
         {
             this.Options = opts;
-            CoreUtils.IO.CreateDirectory(this.Options.LogDir);
+            if (!Directory.Exists(this.Options.LogDir))
+            {
+                Directory.CreateDirectory(this.Options.LogDir);
+            }
 
             this.Template_Filename = Path.GetFileNameWithoutExtension(this.Options.Template_Filename);
             this.Template_Ext = Path.GetExtension(this.Options.Template_Filename);
@@ -98,7 +100,7 @@ namespace CoreUtils
                 var ordered = infos.OrderBy(f => f.CreationTime).ToArray();
                 if (ordered.Length >= this.Options.FilesToKeep)
                 {
-                    int deleteCount = (ordered.Length  - this.Options.FilesToKeep) + 1;
+                    int deleteCount = (ordered.Length - this.Options.FilesToKeep) + 1;
                     for (int i = 0; i < deleteCount; i++)
                     {
                         File.Delete(ordered[i].FullName);
@@ -126,7 +128,8 @@ namespace CoreUtils
                 {
                     FileInfo info = new FileInfo(this.CurrentFilePath);
                     this.CurrentFileSize = info.Length;
-                } else
+                }
+                else
                 {
                     this.CurrentFileSize = 0;
                 }
@@ -161,7 +164,7 @@ namespace CoreUtils
                 {
                     this.FSStream = File.Open(this.CurrentFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
                     this.FSStream.Seek(0, SeekOrigin.End);
-                }                
+                }
                 byte[] dateBytes = Encoding.UTF8.GetBytes(DateTime.Now.ToString(this.Options.Log_Dateformat) + " - ");
 
                 this.FSStream.Write(dateBytes);
