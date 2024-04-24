@@ -65,7 +65,7 @@ namespace net_core_utils_test
             string str = Encoding.UTF8.GetString(bytes);
             logger.Write(str);
 
-            Assert.IsTrue(File.Exists( Path.Combine(options.LogDir, $"log_{currentDateStr}_001.txt")));
+            Assert.IsTrue(File.Exists(Path.Combine(options.LogDir, $"log_{currentDateStr}_001.txt")));
         }
 
         [TestMethod]
@@ -140,7 +140,7 @@ namespace net_core_utils_test
         }
 
         [TestMethod]
-        public void TestWriteLogPerfTest()
+        public async Task TestWriteLogPerfTest()
         {
             Directory.Delete("testlogs", true);
 
@@ -156,17 +156,31 @@ namespace net_core_utils_test
             };
 
             CoreUtils.LoggerFileWriter logger = new CoreUtils.LoggerFileWriter(options);
-            byte[] bytes = null;
-            string log = "";
-            byte[] logBytes = null;
-            for (int i = 0; i < 1000; i++)
+            Action<int, int> action = (int start, int end) =>
             {
-                bytes = new byte[100];
-                log = "Line " + i;                
-                logBytes = Encoding.UTF8.GetBytes(log);
-                logBytes.CopyTo(bytes, 0);                
-                logger.Write(Encoding.UTF8.GetString(bytes));
-            }
+                byte[] bytes = null;
+                string log = "";
+                byte[] logBytes = null;
+                for (int i = start; i < end; i++)
+                {
+                    bytes = new byte[100];
+                    log = "Line " + i;
+                    logBytes = Encoding.UTF8.GetBytes(log);
+                    logBytes.CopyTo(bytes, 0);
+                    logger.Write(Encoding.UTF8.GetString(bytes));                  
+                }
+            };
+
+            List<Func<Task>> tasks = new List<Func<Task>>();
+            tasks.Add(() => Task.Run(() => action(0, 400)));
+            tasks.Add(() => Task.Run(() => action(400, 800)));
+            tasks.Add(() => Task.Run(() => action(800, 1000)));
+            //tasks.Add(() => Task.Run(() => action(667, 1000)));
+
+            await Task.WhenAll(tasks.Select(func => func()));
+
+            Assert.AreEqual(logger.linesWritten, 1000);
+
 
         }
     }

@@ -38,6 +38,7 @@ namespace CoreUtils
 
         object lockObj = new object();
         byte[] newLine = null;
+        public long linesWritten = 0;
 
         public LoggerFileWriterOptions Options { get; set; }
 
@@ -160,14 +161,14 @@ namespace CoreUtils
                 {
                     this.FSStream = File.Open(this.CurrentFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
                     this.FSStream.Seek(0, SeekOrigin.End);
-                }
+                }                
                 byte[] dateBytes = Encoding.UTF8.GetBytes(DateTime.Now.ToString(this.Options.Log_Dateformat) + " - ");
 
                 this.FSStream.Write(dateBytes);
                 this.FSStream.Write(bytesToWrite);
                 this.FSStream.Write(newLine);
                 this.FSStream.Flush();
-
+                linesWritten++;
                 this.CurrentFileSize += bytesToWrite.Length;
             }
         }
