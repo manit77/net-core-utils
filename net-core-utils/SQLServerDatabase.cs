@@ -1,203 +1,117 @@
 ﻿using System;
-using System.Data.Common;
-using System.Data;
 using System.Collections.Generic;
-using System.Data.SqlClient;
+using System.Data;
+using System.Data.Common;
+using System.Threading.Tasks;
+using Microsoft.Data.SqlClient; // Modern provider
+using Dapper;
 
-namespace CoreUtils {
-    public class SQLServerDatabase : IDatabase {
+namespace CoreUtils
+{
+    public class SQLServerDatabase : IDatabase
+    {
         public string _ConnectionString { get; set; }
 
-        public SQLServerDatabase (string connectionString) {
+        public SQLServerDatabase(string connectionString)
+        {
             _ConnectionString = connectionString;
         }
-        public IDbConnection GetConnection (bool autoopen = true) {
-            SqlConnection connection = new SqlConnection(_ConnectionString);
-            if (autoopen) {
-                connection.Open();
+
+        public async Task<DbConnection> GetConnection(bool autoopen = true)
+        {
+            var connection = new SqlConnection(_ConnectionString);
+            if (autoopen)
+            {
+                await connection.OpenAsync();
             }
             return connection;
         }
 
-        public IDbCommand GetCommand (IDbConnection connection, string sql, CommandType cType = CommandType.Text) {
-            SqlCommand command = new SqlCommand(sql, (SqlConnection) connection) {
+        public DbCommand GetCommand(DbConnection connection, string sql, CommandType cType = CommandType.Text)
+        {
+            return new SqlCommand(sql, (SqlConnection)connection)
+            {
                 CommandType = cType
             };
-            return command;
-        }
-        public IDbDataParameter GetParameter(string name, object value) { 
-            SqlParameter newparam = new SqlParameter {
-                ParameterName = name
-            };
-            if (value == null || value == DBNull.Value) {
-                newparam.Value = DBNull.Value;
-            } else {
-                newparam.Value = value;
-            }
-            newparam.Direction = ParameterDirection.Input;
-            return newparam;
         }
 
-        public IDbDataParameter GetParameterOut (string name, object value, DbType type, int maxLength = -1, ParameterDirection direction = ParameterDirection.InputOutput) {
-            SqlParameter newparam = new SqlParameter() {
+        public IDbDataParameter GetParameter(string name, object? value) => new SqlParameter
+        {
+            ParameterName = name,
+            Value = value ?? DBNull.Value,
+            Direction = ParameterDirection.Input
+        };
+
+        public IDbDataParameter GetParameterOut(string name, object? value, DbType type, int maxLength = -1, 
+            ParameterDirection direction = ParameterDirection.InputOutput)
+        {
+            var param = new SqlParameter()
+            {
                 ParameterName = name,
                 DbType = type,
-                Direction = direction
+                Direction = direction,
+                Value = value ?? DBNull.Value
             };
 
-            if (type == DbType.String || type == DbType.AnsiString) {
-                newparam.Size = -1;
-            } else if (maxLength > 0) {
-                newparam.Size = maxLength;
-            }
+            if (type == DbType.String || type == DbType.AnsiString)
+                param.Size = maxLength > 0 ? maxLength : -1;
 
-            if (value == null || value == DBNull.Value) {
-                newparam.Value = DBNull.Value;
-            } else {
-                newparam.Value = value;
-            }
-            return newparam;
-        }
-        public int ExecuteNonQuery (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) {
-            int rowsAffected = -1;
-            try {
-                using IDbConnection connection = GetConnection();
-                var cmd = (SqlCommand) GetCommand(connection, sql, commandType);
-
-                if (parameters != null && parameters.Count > 0) {
-                    cmd.Parameters.AddRange(parameters.ToArray());
-                }
-
-                rowsAffected = cmd.ExecuteNonQuery();
-            } catch (Exception ex) {
-                throw ex;
-            }
-
-            return rowsAffected;
-        }
-        public object GetScalar (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) {
-            object rv = null;
-            try {
-                using IDbConnection connection = GetConnection();
-
-                var cmd = (SqlCommand)GetCommand(connection, sql, commandType);
-
-                if (parameters != null && parameters.Count > 0) {
-                    cmd.Parameters.AddRange(parameters.ToArray());
-                }
-                rv = cmd.ExecuteScalar();
-            } catch (Exception ex) {
-                throw ex;
-            }
-            return rv;
-        }
-        public IDataReader GetDataReader (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) {
-            SqlDataReader r = null;
-            try {
-                IDbConnection connection = GetConnection();
-                var cmd = (SqlCommand)GetCommand(connection, sql, commandType);
-                if (parameters != null && parameters.Count > 0) {
-                    cmd.Parameters.AddRange(parameters.ToArray());
-                }
-                r = cmd.ExecuteReader(CommandBehavior.CloseConnection);
-            } catch (Exception ex) {
-                throw ex;
-            }
-
-            return r;
-        }
-        public DataTable GetDataTable (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) {
-            try {
-                using IDbConnection connection = GetConnection();
-                var cmd = (SqlCommand) GetCommand(connection, sql, commandType);
-                if (parameters != null && parameters.Count > 0) {
-                    cmd.Parameters.AddRange(parameters.ToArray());
-                }
-                DataTable dt = new DataTable();
-                SqlDataAdapter adapater = new SqlDataAdapter(cmd);
-                adapater.Fill(dt);
-                return dt;
-            } catch (Exception ex) {
-                throw ex;
-            }
-        }
-        public DataSet GetDataSet (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) {
-            try {
-                using IDbConnection connection = GetConnection();
-                var cmd = (SqlCommand) GetCommand(connection, sql, commandType);
-                if (parameters != null && parameters.Count > 0) {
-                    cmd.Parameters.AddRange(parameters.ToArray());
-                }
-                DataSet ds = new DataSet();
-                SqlDataAdapter adapater = new SqlDataAdapter(cmd);
-                adapater.Fill(ds);
-                return ds;
-            } catch (Exception ex) {
-                throw ex;
-            }
+            return param;
         }
 
-        public Dictionary<Type, List<System.Reflection.PropertyInfo>> CachedModels = new Dictionary<Type, List<System.Reflection.PropertyInfo>>();
-
-        public IEnumerable<T> Query<T>(string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) // where T : class
+        public async Task<int> ExecuteNonQuery(string sql, List<IDbDataParameter>? parameters = null, 
+            CommandType commandType = CommandType.Text)
         {
-            using IDbConnection conn = GetConnection();
-            var dapperParams = new Dapper.DynamicParameters();
-            foreach (var p in parameters)
-            {
-                dapperParams.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
-            }
-            return Dapper.SqlMapper.Query<T>(conn, sql, dapperParams, null, true, null, CommandType.StoredProcedure);
+            using var connection = await GetConnection();
+            using var cmd = GetCommand(connection, sql, commandType);
+            if (parameters != null) cmd.Parameters.AddRange(parameters.ToArray());
+
+            return await cmd.ExecuteNonQueryAsync();
         }
 
-        /// <summary>
-        /// you're better off using Dapper it's a lot faster
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="r"></param>
-        /// <returns></returns>
-        //public List<T> Query<T> (string sql, List<IDbDataParameter> parameters = null, CommandType commandType = CommandType.Text) where T : class {
-        //    List<T> list = new List<T>();
-        //    IDataReader r = null;
-        //    try {
-        //        r = GetDataReader(sql, parameters, commandType);
+        public async Task<object?> GetScalar(string sql, List<IDbDataParameter>? parameters = null, 
+            CommandType commandType = CommandType.Text)
+        {
+            using var connection = await GetConnection();
+            using var cmd = GetCommand(connection, sql, commandType);
+            if (parameters != null) cmd.Parameters.AddRange(parameters.ToArray());
 
-        //        object instance;
-        //        object value;
-        //        Type type = typeof(T);
-        //        List<System.Reflection.PropertyInfo> listOfProps = null;
+            return await cmd.ExecuteScalarAsync();
+        }
 
-        //        if (CachedModels.TryGetValue(type, out listOfProps) == false) {
-        //            listOfProps = new List<System.Reflection.PropertyInfo>();
-        //            listOfProps.AddRange(type.GetProperties());
-        //            CachedModels.TryAdd(type, listOfProps);
-        //        }
+        public async Task<DbDataReader> GetDataReader(string sql, List<IDbDataParameter>? parameters = null, 
+            CommandType commandType = CommandType.Text)
+        {
+            var connection = await GetConnection();
+            var cmd = GetCommand(connection, sql, commandType);
+            if (parameters != null) cmd.Parameters.AddRange(parameters.ToArray());
 
-        //        while (r.Read()) {
-        //            instance = Activator.CreateInstance(type);
+            return await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+        }
 
-        //            foreach (var property in listOfProps) {
-        //                value = r[property.Name];
-        //                if (value == DBNull.Value) {
-        //                    value = null;
-        //                }
-        //                property.SetValue(instance, value);
-        //            }
-        //            list.Add((T)instance);
-        //        }
-        //        r.Close();
-        //        r.Dispose();
-        //    } catch {
-        //        try {
-        //            if (r != null) {
-        //                r.Close();
-        //                r.Dispose();
-        //            }
-        //        } catch { }
+        public async Task<DataTable> GetDataTable(string sql, List<IDbDataParameter>? parameters = null, 
+            CommandType commandType = CommandType.Text)
+        {
+            using var reader = await GetDataReader(sql, parameters, commandType);
+            var dt = new DataTable();
+            dt.Load(reader);
+            return dt;
+        }
 
-        //        throw;
-        //    }
-        //    return list;
-        //}
+        public async Task<IEnumerable<T>> Query<T>(string sql, List<IDbDataParameter>? parameters = null, 
+            CommandType commandType = CommandType.Text)
+        {
+            using var conn = await GetConnection();
+            var dapperParams = new DynamicParameters();
+            if (parameters != null)
+            {
+                foreach (var p in parameters)
+                    dapperParams.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
+            }
+
+            return await conn.QueryAsync<T>(sql, dapperParams, commandType: commandType);
+        }
+
+        public Dictionary<Type, List<System.Reflection.PropertyInfo>> CachedModels { get; } = new();
     }
 }

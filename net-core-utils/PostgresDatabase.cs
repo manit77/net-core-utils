@@ -1,51 +1,49 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.Data;
 using System.Data.Common;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using MySqlConnector;
+using Npgsql;
 using Dapper;
 
 namespace CoreUtils
 {
-    public class MySQLDatabase : IDatabase
+    public class PostgresDatabase : IDatabase
     {
         public string _ConnectionString { get; set; }
 
-        public MySQLDatabase(string connectionString)
+        public PostgresDatabase(string connectionString)
         {
             _ConnectionString = connectionString;
         }
 
         public async Task<DbConnection> GetConnection(bool autoopen = true)
         {
-            var connection = new MySqlConnection(_ConnectionString);
+            var connection = new NpgsqlConnection(_ConnectionString);
             if (autoopen)
-            {
                 await connection.OpenAsync();
-            }
             return connection;
         }
 
         public DbCommand GetCommand(DbConnection connection, string sql, CommandType cType = CommandType.Text)
         {
-            return new MySqlCommand(sql, (MySqlConnection)connection)
+            return new NpgsqlCommand(sql, (NpgsqlConnection)connection)
             {
                 CommandType = cType
             };
         }
 
-        public IDbDataParameter GetParameter(string name, object? value) => new MySqlParameter
+        public IDbDataParameter GetParameter(string name, object? value) => new NpgsqlParameter
         {
             ParameterName = name,
             Value = value ?? DBNull.Value,
             Direction = ParameterDirection.Input
         };
 
-        public IDbDataParameter GetParameterOut(string name, object? value, DbType type, int maxLength = -1, 
+        public IDbDataParameter GetParameterOut(string name, object? value, DbType type, int maxLength = -1,
             ParameterDirection direction = ParameterDirection.InputOutput)
         {
-            var param = new MySqlParameter()
+            var param = new NpgsqlParameter
             {
                 ParameterName = name,
                 DbType = type,
@@ -59,7 +57,7 @@ namespace CoreUtils
             return param;
         }
 
-        public async Task<int> ExecuteNonQuery(string sql, List<IDbDataParameter>? parameters = null, 
+        public async Task<int> ExecuteNonQuery(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {
             using var connection = await GetConnection();
@@ -69,17 +67,17 @@ namespace CoreUtils
             return await cmd.ExecuteNonQueryAsync();
         }
 
-        public async Task<object?> GetScalar(string sql, List<IDbDataParameter>? parameters = null, 
+        public async Task<object?> GetScalar(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {
-            using var connection = await GetConnection();
+            using var connection = await this.GetConnection();
             using var cmd = GetCommand(connection, sql, commandType);
             if (parameters != null) cmd.Parameters.AddRange(parameters.ToArray());
 
             return await cmd.ExecuteScalarAsync();
         }
 
-        public async Task<DbDataReader> GetDataReader(string sql, List<IDbDataParameter>? parameters = null, 
+        public async Task<DbDataReader> GetDataReader(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {
             var connection = await GetConnection();
@@ -89,16 +87,16 @@ namespace CoreUtils
             return await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection);
         }
 
-        public async Task<DataTable> GetDataTable(string sql, List<IDbDataParameter>? parameters = null, 
+        public async Task<DataTable> GetDataTable(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {
             using var reader = await GetDataReader(sql, parameters, commandType);
             var dt = new DataTable();
-            dt.Load(reader); 
+            dt.Load(reader); // Loads the reader results into the table
             return dt;
         }
 
-        public async Task<IEnumerable<T>> Query<T>(string sql, List<IDbDataParameter>? parameters = null, 
+        public async Task<IEnumerable<T>> Query<T>(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {
             using var conn = await GetConnection();
@@ -106,7 +104,9 @@ namespace CoreUtils
             if (parameters != null)
             {
                 foreach (var p in parameters)
+                {
                     dapperParams.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
+                }
             }
 
             return await conn.QueryAsync<T>(sql, dapperParams, commandType: commandType);
