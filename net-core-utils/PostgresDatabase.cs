@@ -96,6 +96,21 @@ namespace CoreUtils
             return dt;
         }
 
+        public async Task<DataSet> GetDataSet(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text)
+        {            
+            using var reader = await GetDataReader(sql, parameters, commandType);
+            var dataSet = new DataSet();           
+            do
+            {
+                var dt = new DataTable();             
+                dt.Load(reader);
+                dataSet.Tables.Add(dt);
+
+            } while (!reader.IsClosed && reader.NextResult());          
+
+            return dataSet;
+        }
+
         public async Task<IEnumerable<T>> Query<T>(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {

@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Text;
 
 namespace CoreUtils
@@ -22,11 +23,11 @@ namespace CoreUtils
         }
         public static string CurrentDirectory()
         {
-            return Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().GetName().CodeBase).Replace("file:\\\\", "").Replace("file:\\", "");
+            return AppContext.BaseDirectory;
         }
         public static string CurrentDrive()
         {
-            return Path.GetPathRoot(System.Reflection.Assembly.GetEntryAssembly().Location);
+            return Path.GetPathRoot(AppContext.BaseDirectory);
         }
         public static void CreateTextFile(string path, string content, bool autocreatedirectory = true)
         {
@@ -46,6 +47,21 @@ namespace CoreUtils
             if (File.Exists(path))
             {
                 File.Delete(path);
+            }
+        }
+
+        public static void DeleteFiles(string directoryPath)
+        {
+            if (Directory.Exists(directoryPath))
+            {
+                // Get list of files in the directory
+                string[] files = Directory.GetFiles(directoryPath);
+
+                foreach (string file in files)
+                {
+                    // Delete the file
+                    File.Delete(file);
+                }
             }
         }
 

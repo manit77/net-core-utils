@@ -22,7 +22,8 @@ namespace CoreUtils
         Task<object?> GetScalar(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text);
         Task<DbDataReader> GetDataReader(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text);
         Task<DataTable> GetDataTable(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text);
-        
+        Task<DataSet> GetDataSet(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text);
+
         Task<IEnumerable<T>> Query<T>(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text);
     }
 }

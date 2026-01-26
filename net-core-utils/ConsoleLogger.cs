@@ -19,8 +19,8 @@ namespace CoreUtils
             switch (level)
             {
                 case LogLevel.Info:
-                    Console.ForegroundColor = ConsoleColor.White;
-                    Console.WriteLine($"[LOG]: {message}");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"[INFO]: {message}");
                     break;
 
                 case LogLevel.Warning:
@@ -39,7 +39,7 @@ namespace CoreUtils
         }
 
         // Shorthand helpers
-        public static void Log(string msg) => WriteLog(msg, LogLevel.Info);
+        public static void Info(string msg) => WriteLog(msg, LogLevel.Info);
         public static void Warn(string msg) => WriteLog(msg, LogLevel.Warning);
         public static void Error(string msg) => WriteLog(msg, LogLevel.Error);
     }
