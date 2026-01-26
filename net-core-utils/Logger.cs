@@ -6,183 +6,209 @@ using System.Numerics;
 using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
-namespace CoreUtils
+namespace CoreUtils;
+
+public sealed class LoggerFileWriterOptions
 {
-    public class LoggerFileWriterOptions
+    public required string LogDir { get; init; } = "logs";
+    public string TemplateFilename { get; init; } = "log_{date}_{index}.txt";
+    public string FilenameDateFormat { get; init; } = "yyyyMMddHHmm";
+    public string LogDateFormat { get; init; } = "yyyy-MM-dd HH:mm:ss.fff";
+    public long MaxFileSize { get; init; } = 100_000_000;
+    public int FilesToKeep { get; init; } = 10;
+    public Func<DateTimeOffset, string>? FuncGetFileNameDateStr { get; init; }
+
+    public void Validate()
     {
-        public string LogDir { get; set; } = "logs";
-        public string Template_Filename { get; set; } = "log_{date}_{index}.txt";
-        public string Template_Filename_Dateformat { get; set; } = "yyyyMMddHHmm";
-        public string Log_Dateformat { get; set; } = "yyyy-MM-dd-HH:mm:ss";
-        public int MaxFileSize { get; set; } = 100000000;
-        public int FilesToKeep { get; set; } = 10;
-        public Func<DateTime, string> FuncGetFileNameDateStr = null;
+        if (string.IsNullOrWhiteSpace(LogDir))
+            throw new ArgumentException("LogDir must be provided");
+
+        if (MaxFileSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(MaxFileSize));
+
+        if (FilesToKeep <= 0)
+            throw new ArgumentOutOfRangeException(nameof(FilesToKeep));
+    }
+}
+
+
+
+public sealed class LoggerFileWriter : IDisposable, IAsyncDisposable
+{
+    private readonly LoggerFileWriterOptions _options;
+    private readonly object _lock = new();
+
+    private FileStream? _stream;
+    private string _currentFilePath = "";
+    private long _currentFileSize;
+    private int _currentIndex = 1;
+
+    private readonly string _templateName;
+    private readonly string _templateExt;
+    private readonly byte[] _newline = Encoding.UTF8.GetBytes(Environment.NewLine);
+
+    public long LinesWritten { get; private set; }
+
+    public LoggerFileWriter(LoggerFileWriterOptions options)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _options.Validate();
+
+        Directory.CreateDirectory(_options.LogDir);
+
+        _templateName = Path.GetFileNameWithoutExtension(_options.TemplateFilename);
+        _templateExt = Path.GetExtension(_options.TemplateFilename);
+
+        InitializeCurrentFile();
     }
 
-    public class LoggerFileWriter : IDisposable
+    private void InitializeCurrentFile()
     {
+        var filename = GetFileName(_currentIndex);
+        _currentFilePath = Path.Combine(_options.LogDir, filename);
 
-        public string CurrentFilePath = "";
-        public string CurrentFileName = "";
-        public long CurrentFileSize = 0;
-        public int CurrentIndex = 1;
-
-        string Template_Filename = "";
-        string Template_Ext = "";
-        public FileStream FSStream = null;
-
-        object lockObj = new object();
-        byte[] newLine = null;
-        public long linesWritten = 0;
-
-        public LoggerFileWriterOptions Options { get; set; }
-
-        public LoggerFileWriter(LoggerFileWriterOptions opts)
+        if (File.Exists(_currentFilePath))
         {
-            this.Options = opts;
-            if (!Directory.Exists(this.Options.LogDir))
+            _currentFileSize = new FileInfo(_currentFilePath).Length;
+        }
+        else
+        {
+            _currentFileSize = 0;
+        }
+    }
+
+    private string GetFileNameDateString()
+    {
+        return _options.FuncGetFileNameDateStr?.Invoke(DateTimeOffset.UtcNow)
+               ?? DateTimeOffset.UtcNow.ToString(_options.FilenameDateFormat);
+    }
+
+    private string GetFileName(int index)
+    {
+        var date = GetFileNameDateString();
+        var idx = index.ToString("D3");
+        return _templateName.Replace("{date}", date)
+                             .Replace("{index}", idx)
+                             + _templateExt;
+    }
+
+    private void RotateIfNeeded(long incomingBytes)
+    {
+        if (_currentFileSize + incomingBytes <= _options.MaxFileSize)
+            return;
+
+        CloseStream();
+
+        CleanupOldFiles();
+
+        while (true)
+        {
+            var filename = GetFileName(_currentIndex);
+            var full = Path.Combine(_options.LogDir, filename);
+            if (!File.Exists(full))
             {
-                Directory.CreateDirectory(this.Options.LogDir);
+                _currentFilePath = full;
+                _currentFileSize = 0;
+                break;
             }
+            _currentIndex++;
+        }
+    }
 
-            this.Template_Filename = Path.GetFileNameWithoutExtension(this.Options.Template_Filename);
-            this.Template_Ext = Path.GetExtension(this.Options.Template_Filename);
+    private void CleanupOldFiles()
+    {
+        var searchPattern = _templateName.Replace("{date}", "*").Replace("{index}", "*") + _templateExt;
+        var files = Directory.GetFiles(_options.LogDir, searchPattern)
+                             .Select(f => new FileInfo(f))
+                             .OrderBy(f => f.LastWriteTimeUtc)
+                             .ToList();
 
-            GetCurrentInfo();
-            IncrementFileCheck(0);
-            newLine = Encoding.UTF8.GetBytes(Environment.NewLine);
+        var excess = files.Count - _options.FilesToKeep + 1;
+        for (int i = 0; i < excess; i++)
+        {
+            files[i].Delete();
+        }
+    }
+
+    private FileStream OpenStream()
+    {
+        return new FileStream(
+            _currentFilePath,
+            FileMode.OpenOrCreate,
+            FileAccess.Write,
+            FileShare.Read,
+            bufferSize: 64 * 1024,
+            options: FileOptions.SequentialScan);
+    }
+
+    public void Write(string message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        var payload = Encoding.UTF8.GetBytes(message);
+        var datePrefix = Encoding.UTF8.GetBytes($"{DateTimeOffset.UtcNow.ToString(_options.LogDateFormat)} - ");
+
+        lock (_lock)
+        {
+            RotateIfNeeded(payload.Length + datePrefix.Length + _newline.Length);
+
+            _stream ??= OpenStream();
+            _stream.Seek(0, SeekOrigin.End);
+
+            _stream.Write(datePrefix);
+            _stream.Write(payload);
+            _stream.Write(_newline);
+
+            _currentFileSize += payload.Length + datePrefix.Length + _newline.Length;
+            LinesWritten++;
+        }
+    }
+
+    public async ValueTask WriteAsync(string message, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        var payload = Encoding.UTF8.GetBytes(message);
+        var datePrefix = Encoding.UTF8.GetBytes($"{DateTimeOffset.UtcNow.ToString(_options.LogDateFormat)} - ");
+
+        lock (_lock)
+        {
+            RotateIfNeeded(payload.Length + datePrefix.Length + _newline.Length);
+            _stream ??= OpenStream();
+            _stream.Seek(0, SeekOrigin.End);
+
+            // Use synchronous write inside lock
+            _stream.Write(datePrefix, 0, datePrefix.Length);
+            _stream.Write(payload, 0, payload.Length);
+            _stream.Write(_newline, 0, _newline.Length);
+
+            _currentFileSize += payload.Length + datePrefix.Length + _newline.Length;
+            LinesWritten++;
         }
 
-        public void GetCurrentInfo()
-        {
-            this.CurrentFileName = GetFileName(1);
-            this.CurrentFilePath = Path.Combine(this.Options.LogDir, this.CurrentFileName);
-            this.CurrentFileSize = 0;
+        await Task.CompletedTask; // preserve async signature
+    }
 
-            if (File.Exists(this.CurrentFilePath))
-            {
-                FileInfo fileInfo = new FileInfo(this.CurrentFilePath);
-                this.CurrentFileSize = fileInfo.Length;
-            }
-        }
 
-        void IncrementFileCheck(long lengthToWrite)
-        {
-            bool increment = false;
-            if (this.CurrentFileSize + lengthToWrite > this.Options.MaxFileSize)
-            {
-                increment = true;
-            }
+    private void CloseStream()
+    {
+        _stream?.Dispose();
+        _stream = null;
+    }
 
-            if (increment)
-            {
-                if (this.FSStream != null)
-                {
-                    this.FSStream.Flush();
-                    this.FSStream.Close();
-                    this.FSStream.Dispose();
-                    this.FSStream = null;
-                }
+    public void Dispose()
+    {
+        CloseStream();
+        GC.SuppressFinalize(this);
+    }
 
-                //get all files that match the extension
-                List<FileInfo> infos = new List<FileInfo>();
-                string searchPattern = this.Template_Filename.Replace("{date}", "*").Replace("{index}", "*") + this.Template_Ext;
-                var filesWithExt = Directory.GetFiles(this.Options.LogDir, searchPattern);
-                foreach (var file in filesWithExt)
-                {
-                    infos.Add(new FileInfo(file));
-                }
-
-                var ordered = infos.OrderBy(f => f.CreationTime).ToArray();
-                if (ordered.Length >= this.Options.FilesToKeep)
-                {
-                    int deleteCount = (ordered.Length - this.Options.FilesToKeep) + 1;
-                    for (int i = 0; i < deleteCount; i++)
-                    {
-                        File.Delete(ordered[i].FullName);
-                    }
-                }
-
-                string newFileName = "";
-                while (true)
-                {
-                    newFileName = GetFileName(this.CurrentIndex);
-                    if (File.Exists(Path.Combine(this.Options.LogDir, newFileName)))
-                    {
-                        this.CurrentIndex++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                this.CurrentFilePath = Path.Combine(this.Options.LogDir, newFileName);
-                this.CurrentFileName = newFileName;
-
-                if (File.Exists(this.CurrentFilePath))
-                {
-                    FileInfo info = new FileInfo(this.CurrentFilePath);
-                    this.CurrentFileSize = info.Length;
-                }
-                else
-                {
-                    this.CurrentFileSize = 0;
-                }
-            }
-        }
-
-        string GetFileNameDateString()
-        {
-            if (this.Options.FuncGetFileNameDateStr != null)
-            {
-                return this.Options.FuncGetFileNameDateStr(DateTime.Now);
-            }
-            return DateTime.Now.ToString(this.Options.Template_Filename_Dateformat);
-        }
-
-        string GetFileName(int index)
-        {
-            string dateString = this.GetFileNameDateString();
-            string indexString = index.ToString().PadLeft(3, '0');
-            return this.Template_Filename.Replace("{date}", dateString).Replace("{index}", indexString) + this.Template_Ext;
-        }
-
-        public void Write(string log)
-        {
-            lock (lockObj)
-            {
-                byte[] bytesToWrite = Encoding.UTF8.GetBytes(log);
-
-                IncrementFileCheck(bytesToWrite.Length);
-
-                if (this.FSStream == null)
-                {
-                    this.FSStream = File.Open(this.CurrentFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
-                    this.FSStream.Seek(0, SeekOrigin.End);
-                }
-                byte[] dateBytes = Encoding.UTF8.GetBytes(DateTime.Now.ToString(this.Options.Log_Dateformat) + " - ");
-
-                this.FSStream.Write(dateBytes);
-                this.FSStream.Write(bytesToWrite);
-                this.FSStream.Write(newLine);
-                this.FSStream.Flush();
-                linesWritten++;
-                this.CurrentFileSize += bytesToWrite.Length;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (this.FSStream != null)
-            {
-                this.FSStream.Flush();
-                this.FSStream.Close();
-                this.FSStream.Dispose();
-                this.FSStream = null;
-            }
-        }
+    public ValueTask DisposeAsync()
+    {
+        CloseStream();
+        GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 }

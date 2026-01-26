@@ -2,43 +2,50 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Security.Claims;
+using CoreUtils;
+using FluentAssertions;
+using Xunit;
 
 namespace net_core_utils_test
 {
-    [TestClass]
     public class TestJWTTokenManager
     {
-        [TestMethod]
+        [Fact]
         public void TestToken()
         {
+            // Arrange
             string key = "asdfasdfasdfasdfasdfasdfasdfasdfasdfasdf";
-            CoreUtils.JWTTokenManager jWTTokenManager = new CoreUtils.JWTTokenManager(key);
-            Dictionary<string, string> claims = new Dictionary<string, string>();
-            claims["username"] = "testusername";
-            claims["userroles"] = "admin,user";
+            var jwtManager = new JWTTokenManager(key);
 
-            string token = jWTTokenManager.GenerateToken(claims, 1);
+            var claims = new Dictionary<string, string>
+            {
+                ["username"] = "testusername",
+                ["userroles"] = "admin,user"
+            };
 
-            Debug.WriteLine(token);
+            // Act
+            string token = jwtManager.GenerateToken(claims, 1);
 
-            Assert.IsNotNull(token);
-            Assert.IsTrue(token.Length > 0);
+            Debug.WriteLine($"Generated Token: {token}");
 
-            //verify the claims
-            var verifiedClaims = jWTTokenManager.GetClaims(token);
+            // Assert
+            token.Should().NotBeNullOrEmpty("token should be generated successfully");
 
+            var verifiedClaims = jwtManager.GetClaims(token);
+
+            verifiedClaims.Should().NotBeNull("claims should be verified successfully");
+            verifiedClaims.Claims.Should().NotBeEmpty("claims should contain entries");
+
+            // Verify specific claims by Type
+            verifiedClaims.Claims.Should().ContainSingle(c => c.Type == "username" && c.Value == "testusername");
+            verifiedClaims.Claims.Should().ContainSingle(c => c.Type == "userroles" && c.Value == "admin,user");
+
+            // Output for debugging
             foreach (var claim in verifiedClaims.Claims)
             {
-                Debug.WriteLine($"{claim}");
+                Debug.WriteLine($"{claim.Type} = {claim.Value}");
             }
-            
-            Assert.IsNotNull(verifiedClaims);
-            Assert.IsTrue(verifiedClaims.Claims.Count() > 0);
-
-
-
         }
     }
 }
