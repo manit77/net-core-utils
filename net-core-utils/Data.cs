@@ -19,7 +19,7 @@ namespace CoreUtils
     public static class Data
     {
         public static int CalculateAge(DateTime dob, DateTime? ageAtDate = null)
-        {            
+        {
             var now = ageAtDate ?? DateTime.Today;
             var age = now.Year - dob.Year;
             if (dob > now.AddYears(-age))
@@ -71,7 +71,7 @@ namespace CoreUtils
             return date;
         }
 
-        public static string ReplaceAllInstances(string inval, string findval, string replaceval)
+        public static string ReplaceAll(string inval, string findval, string replaceval)
         {
             while (inval.Contains(findval))
             {
@@ -157,74 +157,93 @@ namespace CoreUtils
             return ParseIt<T>(value, default(T));
         }
 
-        public static T ParseIt<T>(object value, T outputifnull)
+        /// <summary>
+        /// parse from one datatype to another
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <param name="outputIfNull"></param>
+        /// <returns></returns>
+        public static T ParseIt<T>(object value, T outputIfNull = default)
         {
+            // 1. Quick return if value is already the correct type
             if (value is T variable)
             {
                 return variable;
             }
 
+            // 2. Handle Null or DBNull
             if (value == null || value == DBNull.Value)
             {
+                // If T is string and value is null, return empty string or the provided default
                 if (typeof(T) == typeof(string))
                 {
-                    object rv = string.Empty;
-                    return ((T)rv);
+                    return (T)(object)string.Empty;
                 }
-                else
-                {
-                    return outputifnull;
-                }
+                return outputIfNull;
             }
 
             try
             {
-                if (Nullable.GetUnderlyingType(typeof(T)) != null || typeof(T) == typeof(DateTimeOffset))
+                Type targetType = typeof(T);
+
+                // 3. Handle Nullable types
+                Type underlyingType = Nullable.GetUnderlyingType(targetType);
+                Type conversionType = underlyingType ?? targetType;
+
+                // 4. Handle DateTimeOffset and other types Convert.ChangeType might struggle with
+                if (conversionType == typeof(DateTimeOffset))
                 {
-                    return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(value);
+                    return (T)TypeDescriptor.GetConverter(conversionType).ConvertFrom(value);
                 }
-                
-                return (T)Convert.ChangeType(value, typeof(T));
+
+                // 5. Standard conversion
+                return (T)Convert.ChangeType(value, conversionType);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine(ex);
-                return outputifnull;
+                Debug.WriteLine($"ParseIt conversion error: {ex.Message}");
+                return outputIfNull;
             }
         }
 
+        /// <summary>
+        /// Uses reflection to call the static Parse method on type T
+        /// Equivalent to:  DateTime.Parse(string)
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
         public static T Parse<T>(string value)
-        {
-            if (value == null)
+        { 
+            // Ensure value isn't null to avoid errors in target Parse methods
+            value ??= string.Empty;
+
+            if (ParseDelegateStore<T>.Parse == null)
             {
-                value = string.Empty;
+                // Get the method info for T.Parse(string)
+                var method = typeof(T).GetMethod("Parse",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null,
+                    new[] { typeof(string) },
+                    null);
+
+                if (method == null)
+                    throw new InvalidOperationException($"Type {typeof(T).Name} does not have a static Parse(string) method.");
+
+                // Create and cache the delegate
+                ParseDelegateStore<T>.Parse = (ParseDelegate<T>)Delegate.CreateDelegate(typeof(ParseDelegate<T>), method);
             }
 
-            ParseDelegate<T> parse = ParseDelegateStore<T>.Parse;
-            if (parse == null)
-            {
-                parse = (ParseDelegate<T>)Delegate.CreateDelegate(typeof(ParseDelegate<T>), typeof(T), "Parse", true);
-                ParseDelegateStore<T>.Parse = parse;
-            }
-            return parse(value);
+            return ParseDelegateStore<T>.Parse(value);
         }
 
-        public static bool TryParse<T>(string value, out T result)
-        {
-            if (value == null)
-            {
-                value = string.Empty;
-            }
-
-            TryParseDelegate<T> tryParse = ParseDelegateStore<T>.TryParse;
-            if (tryParse == null)
-            {
-                tryParse = (TryParseDelegate<T>)Delegate.CreateDelegate(typeof(TryParseDelegate<T>), typeof(T), "TryParse", true);
-                ParseDelegateStore<T>.TryParse = tryParse;
-            }
-            return tryParse(value, out result);
-        }
-
+        /// <summary>
+        /// Converts an object to string, returning empty string for null or DBNull
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
         public static string ToString(object value)
         {
             if (value == null || value == DBNull.Value)
@@ -234,140 +253,18 @@ namespace CoreUtils
             return value.ToString();
         }
 
-        public static bool IsStringNullEmptySpaces(string value)
+        public static bool IsEmptyWhiteSpace(string value)
         {
             return string.IsNullOrEmpty(value) || string.IsNullOrWhiteSpace(value);
-        }
-        public static void CopyProperties(object source, object destination)
-        {
-            CopyProperties(source: source, destination: destination, types: null);
-        }
-
-        public static void CopyProperties(object source, object destination, List<Type> types)
-        {
-            PropertyInfo[] sourceproperties = source.GetType().GetProperties();
-            PropertyInfo[] destinationproperties = destination.GetType().GetProperties();
-
-            foreach (PropertyInfo sourcepi in sourceproperties)
-            {
-                PropertyInfo destinationpi = destinationproperties.Where(pi => pi.Name == sourcepi.Name && pi.GetType() == sourcepi.GetType()).FirstOrDefault();
-
-                if (destinationpi == null)
-                {
-                    continue;
-                }
-
-                #region
-
-                Type ICloneType = sourcepi.PropertyType.GetInterface("ICloneable", true);
-
-                if (ICloneType != null)
-                {
-
-                    ICloneable IClone = (ICloneable)sourcepi.GetValue(source, null);
-
-                    if (IClone != null)
-                    {
-                        if (destinationpi.CanWrite && (types == null || types.Contains(destinationpi.GetType())))
-                        {
-                            destinationpi.SetValue(destination, IClone.Clone(), null);
-                        }
-                    }
-                }
-                else
-                {
-                    if (destinationpi.CanWrite && (types == null || types.Contains(destinationpi.GetType())))
-                    {                        
-                        destinationpi.SetValue(destination, sourcepi.GetValue(source, null), null);
-                    }
-                }
-
-                #endregion
-            }
-        }
-        
-        public static void CopyProperties(object source, object destination, List<string> skipfields = null)
-        {
-
-            if (source == null || destination == null)
-            {
-                return;
-            }
-
-            PropertyInfo[] sourceproperties = source.GetType().GetProperties();
-            PropertyInfo[] destinationproperties = destination.GetType().GetProperties();
-
-            foreach (PropertyInfo sourcepi in sourceproperties)
-            {
-                if (skipfields == null || !skipfields.Contains(sourcepi.Name))
-                {
-                    try
-                    {
-                        PropertyInfo destinationpi = destinationproperties.Where(pi => pi.Name == sourcepi.Name && pi.GetType() == sourcepi.GetType()).FirstOrDefault();
-
-                        if (destinationpi == null)
-                        {
-                            continue;
-                        }
-
-                        #region
-
-                        //We query if the fields support the ICloneable interface.
-                        Type ICloneType = sourcepi.PropertyType.GetInterface("ICloneable", true);
-
-                        if (ICloneType != null)
-                        {
-                            //Getting the ICloneable interface from the object.
-                            ICloneable IClone = (ICloneable)sourcepi.GetValue(source, null);
-
-                            //We use the clone method to set the new value to the field.
-                            if (IClone != null)
-                            {
-                                if (destinationpi.CanWrite)
-                                {
-                                    destinationpi.SetValue(destination, IClone.Clone(), null);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (destinationpi.CanWrite)
-                            {
-                                // If the field doesn't support the ICloneable
-                                // interface then just set it.
-                                if (destinationpi.PropertyType != sourcepi.PropertyType)
-                                {
-                                    if (destinationpi.PropertyType == typeof(DateTime))
-                                    {
-                                        object value = sourcepi.GetValue(source, null);
-                                        destinationpi.SetValue(destination, value);
-                                    }
-
-                                }
-                                else
-                                {
-                                    destinationpi.SetValue(destination, sourcepi.GetValue(source, null), null);
-                                }
-                            }
-                        }
-                        #endregion
-
-                    }
-                    catch (Exception exp)
-                    {
-                        Console.WriteLine(exp.ToString());
-
-                    }
-                }
-            }
         }
 
         public static string Base64Encode(string plainText)
         {
             return Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
         }
+        
         public static string Base64Decode(string base64EncodedData)
-        {         
+        {
             return Encoding.UTF8.GetString(Convert.FromBase64String(base64EncodedData));
         }
 
