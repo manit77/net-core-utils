@@ -50,6 +50,14 @@ namespace CoreUtils
             }
         }
 
+        public static void DeleteFolder(string path)
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, true);
+            }
+        }
+        
         public static void DeleteFiles(string directoryPath)
         {
             if (Directory.Exists(directoryPath))
