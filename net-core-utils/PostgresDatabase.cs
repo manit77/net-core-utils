@@ -21,7 +21,9 @@ namespace CoreUtils
         {
             var connection = new NpgsqlConnection(_ConnectionString);
             if (autoopen)
+            {
                 await connection.OpenAsync();
+            }
             return connection;
         }
 
@@ -80,10 +82,33 @@ namespace CoreUtils
         public async Task<DbDataReader> GetDataReader(string sql, List<IDbDataParameter>? parameters = null,
             CommandType commandType = CommandType.Text)
         {
+            // Note: Caller is responsible for closing the reader (which will close the connection as well)
+            //don't use 'using' here
             var connection = await GetConnection();
             var cmd = GetCommand(connection, sql, commandType);
             if (parameters != null) cmd.Parameters.AddRange(parameters.ToArray());
 
+            return await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection);
+        }
+
+        public async Task<DbDataReader> GetDataReader(string sql, object? parameters = null, CommandType commandType = CommandType.Text)
+        {
+            // Caller closes reader (which closes connection)
+            var connection = await GetConnection();
+
+            var cmd = GetCommand(connection, sql, commandType);
+
+            if (parameters != null)
+            {
+                var props = parameters.GetType().GetProperties();
+                foreach (var prop in props)
+                {
+                    var p = cmd.CreateParameter();
+                    p.ParameterName = "@" + prop.Name;
+                    p.Value = prop.GetValue(parameters) ?? DBNull.Value;
+                    cmd.Parameters.Add(p);
+                }
+            }
             return await cmd.ExecuteReaderAsync(CommandBehavior.CloseConnection);
         }
 
@@ -97,16 +122,16 @@ namespace CoreUtils
         }
 
         public async Task<DataSet> GetDataSet(string sql, List<IDbDataParameter>? parameters = null, CommandType commandType = CommandType.Text)
-        {            
+        {
             using var reader = await GetDataReader(sql, parameters, commandType);
-            var dataSet = new DataSet();           
+            var dataSet = new DataSet();
             do
             {
-                var dt = new DataTable();             
+                var dt = new DataTable();
                 dt.Load(reader);
                 dataSet.Tables.Add(dt);
 
-            } while (!reader.IsClosed && reader.NextResult());          
+            } while (!reader.IsClosed && reader.NextResult());
 
             return dataSet;
         }
@@ -115,16 +140,16 @@ namespace CoreUtils
             CommandType commandType = CommandType.Text)
         {
             using var conn = await GetConnection();
-            var dapperParams = new DynamicParameters();
+            var dynamicParameters = new DynamicParameters();
             if (parameters != null)
             {
                 foreach (var p in parameters)
                 {
-                    dapperParams.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
+                    dynamicParameters.Add(p.ParameterName, p.Value, p.DbType, p.Direction, p.Size);
                 }
             }
 
-            return await conn.QueryAsync<T>(sql, dapperParams, commandType: commandType);
+            return await conn.QueryAsync<T>(sql, dynamicParameters, commandType: commandType);
         }
     }
 }
