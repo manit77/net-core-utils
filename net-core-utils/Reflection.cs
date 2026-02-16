@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 
@@ -7,64 +9,85 @@ namespace CoreUtils
 {
     public static class Reflection
     {
-        public static void Copy(object source, object destination)
+        // Caches the "Plan" for copying Type A to Type B
+        private static readonly ConcurrentDictionary<(Type, Type), List<PropertyMap>> _mapCache = new();
+
+        // Cache the MethodInfo for ParseIt
+        private static readonly MethodInfo _parseMethod =
+            typeof(CoreUtils.Data).GetMethod(nameof(CoreUtils.Data.ParseIt), new[] { typeof(object) });
+
+        public static T Copy<T>(object source, T destination, List<string> skipFields = null)
         {
-            Copy(source, destination, null);
-        }
+            if (source == null || destination == null) return destination;
 
-        /// <summary>
-        /// Copies matching properties from source to destination.
-        /// </summary>
-        public static void Copy(object source, object destination, List<string> skipFields = null)
-        {
-            if (source == null || destination == null) return;
+            var sourceType = source.GetType();
+            var destType = typeof(T);
+            var cacheKey = (sourceType, destType);
 
-            var sourceProps = source.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            var destProps = destination.GetType()
-                                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                                .ToDictionary(p => p.Name);
+            // Get or Create the mapping plan
+            var plan = _mapCache.GetOrAdd(cacheKey, key => BuildPlan(key.Item1, key.Item2));
 
-            foreach (var sourcePi in sourceProps)
+            foreach (var map in plan)
             {
-                if (skipFields?.Contains(sourcePi.Name) == true) continue;
-                if (!destProps.TryGetValue(sourcePi.Name, out var destPi)) continue;
-                if (!destPi.CanWrite) continue;
+                if (skipFields?.Contains(map.SourceProperty.Name) == true) continue;
 
                 try
                 {
-                    if (!destPi.PropertyType.IsAssignableFrom(sourcePi.PropertyType)) continue;
+                    object val = map.SourceProperty.GetValue(source);
 
-                    object value = sourcePi.GetValue(source);
-                    if (value == null)
+                    if (map.RequiresParse)
                     {
-                        destPi.SetValue(destination, null);
-                        continue;
+                        // Call the pre-constructed generic ParseIt<T>
+                        val = map.GenericParseMethod.Invoke(null, new[] { val });
                     }
 
-                    if (value is ICloneable cloneable)
-                    {
-                        destPi.SetValue(destination, cloneable.Clone());
-                    }
-                    else
-                    {
-                        destPi.SetValue(destination, value);
-                    }
+                    map.DestProperty.SetValue(destination, val);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error copying property {sourcePi.Name}: {ex.Message}");
+                    Debug.WriteLine($"Error copying {map.SourceProperty.Name}: {ex.Message}");
                 }
             }
+
+            return destination;
         }
 
-        public static List<string> GetPropertyNames<T>(T obj)
+        private static List<PropertyMap> BuildPlan(Type source, Type dest)
         {
-            if (obj == null) throw new ArgumentNullException(nameof(obj));
+            var plan = new List<PropertyMap>();
+            var destProps = dest.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                                .Where(p => p.CanWrite)
+                                .ToDictionary(p => p.Name);
 
-            return typeof(T)
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Select(p => p.Name)
-                .ToList();
+            foreach (var sProp in source.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (destProps.TryGetValue(sProp.Name, out var dProp))
+                {
+                    var map = new PropertyMap
+                    {
+                        SourceProperty = sProp,
+                        DestProperty = dProp
+                    };
+
+                    // Check if types match exactly
+                    if (sProp.PropertyType != dProp.PropertyType)
+                    {
+                        map.RequiresParse = true;
+                        map.GenericParseMethod = _parseMethod.MakeGenericMethod(dProp.PropertyType);
+                    }
+
+                    plan.Add(map);
+                }
+            }
+            return plan;
+        }
+
+        private class PropertyMap
+        {
+            public PropertyInfo SourceProperty { get; set; }
+            public PropertyInfo DestProperty { get; set; }
+            public bool RequiresParse { get; set; }
+            public MethodInfo GenericParseMethod { get; set; }
         }
     }
 }
