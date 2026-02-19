@@ -121,6 +121,12 @@ namespace net_core_utils_test
             val = "";
             CoreUtils.Data.ParseIt<DateTimeOffset?>(val).Should().BeNull();
 
+            val = "a";
+            CoreUtils.Data.ParseIt<DateTimeOffset?>(val).Should().BeNull();
+
+             val = "";
+            CoreUtils.Data.ParseIt<DateTimeOffset>(val).Should().Be(DateTimeOffset.MinValue);
+
             var cdate = DateTimeOffset.Parse("2024-01-02 10:17 PM");
             val = cdate.ToString();
             CoreUtils.Data.ParseIt<DateTimeOffset>(val).Should().Be(cdate);

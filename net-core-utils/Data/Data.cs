@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 
 namespace CoreUtils;
 
@@ -165,46 +166,66 @@ public static class Data
     /// <returns></returns>
     public static T ParseIt<T>(object value, T outputIfNull = default)
     {
-        // 1. Quick return if value is already the correct type
+        // 1. Already correct type
         if (value is T variable)
-        {
             return variable;
-        }
 
-        // 2. Handle Null or DBNull
+        // 2. Null / DBNull
         if (value == null || value == DBNull.Value)
         {
-            // If T is string and value is null, return empty string or the provided default
             if (typeof(T) == typeof(string))
-            {
                 return (T)(object)string.Empty;
-            }
+
             return outputIfNull;
         }
 
+        Type targetType = typeof(T);
+        Type underlyingType = Nullable.GetUnderlyingType(targetType);
+        Type conversionType = underlyingType ?? targetType;
+
+        // ⭐ NEW: empty string handling
+        if (value is string s && string.IsNullOrWhiteSpace(s))
+        {
+            // nullable → null
+            if (underlyingType != null)
+                return default;
+
+            // string → empty
+            if (targetType == typeof(string))
+                return (T)(object)string.Empty;
+
+            return outputIfNull;
+        }
+
+       
         try
         {
-            Type targetType = typeof(T);
-
-            // 3. Handle Nullable types
-            Type underlyingType = Nullable.GetUnderlyingType(targetType);
-            Type conversionType = underlyingType ?? targetType;
-
-            // 4. Handle DateTimeOffset and other types Convert.ChangeType might struggle with
             if (conversionType == typeof(DateTimeOffset))
-            {
                 return (T)TypeDescriptor.GetConverter(conversionType).ConvertFrom(value);
-            }
 
-            // 5. Standard conversion
+            if (conversionType.IsEnum)
+                return (T)Enum.Parse(conversionType, value.ToString(), true);
+
+            if (conversionType == typeof(Guid))
+                return (T)(object)Guid.Parse(value.ToString());
+
             return (T)Convert.ChangeType(value, conversionType);
         }
-        catch (Exception ex)
+        catch
         {
-            Debug.WriteLine($"ParseIt conversion error: {ex.Message}");
-            return outputIfNull;
+            try
+            {
+                string str = value.ToString();
+                return (T)Convert.ChangeType(str, conversionType);
+            }
+            catch
+            {
+                Console.Error.WriteLine($"unable to convert data ${value} type ${conversionType}");
+                return outputIfNull;
+            }
         }
     }
+
 
     /// <summary>
     /// Uses reflection to call the static Parse method on type T
@@ -272,26 +293,15 @@ public static class Data
         return System.Text.RegularExpressions.Regex.Replace(source, findRegEx, replacewith);
     }
 
-    public static string SnakeToPascal(string columnName)
+    public static string ToPascalCase(string str)
     {
-        if (string.IsNullOrWhiteSpace(columnName))
-            return string.Empty;
+        if (string.IsNullOrEmpty(str)) return str;
 
-        // Split by underscores and remove any empty entries (handles "first__name")
-        string[] parts = columnName.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
-
-        for (int i = 0; i < parts.Length; i++)
-        {
-            string part = parts[i];
-
-            // Capitalize first letter, lowercase the rest
-            // Note: use CultureInfo.InvariantCulture for consistent behavior across regions
-            parts[i] = char.ToUpper(part[0], CultureInfo.InvariantCulture) +
-                       part.Substring(1).ToLower(CultureInfo.InvariantCulture);
-        }
-
-        return string.Join("", parts);
+        // Handles snake_case and kebab-case by splitting and capitalizing.
+        return string.Concat(str.Split(new[] { '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                                .Select(s => s.Length > 0 ? char.ToUpper(s[0]) + s.Substring(1).ToLower() : ""));
     }
+
 
     public static bool IsNumericType(object o)
     {
