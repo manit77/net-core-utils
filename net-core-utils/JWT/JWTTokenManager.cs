@@ -12,11 +12,11 @@ namespace CoreUtils
 
     public interface IJWTTokenManager
     {
-        string GenerateToken(IReadOnlyDictionary<string, string> claims, int expiresMinutes = 60, string encryptionAlgorithm = SecurityAlgorithms.HmacSha256Signature);
+        string GenerateToken(IReadOnlyDictionary<string, string> claims, string issuer = "", string audience = "", int expiresMinutes = 60, string encryptionAlgorithm = SecurityAlgorithms.HmacSha256Signature);
         ClaimsPrincipal GetClaims(string token);
     }
 
-    public class JWTTokenManager: IJWTTokenManager
+    public class JWTTokenManager : IJWTTokenManager
     {
         JwtSecurityTokenHandler tokenHandler = new JwtSecurityTokenHandler();
         byte[] secretKey;
@@ -28,7 +28,7 @@ namespace CoreUtils
             this.secretKey = Encoding.UTF8.GetBytes(key);
         }
 
-        public string GenerateToken(IReadOnlyDictionary<string, string> claims, int expiresMinutes = 60, string encryptionAlgorithm = SecurityAlgorithms.HmacSha256Signature)
+        public string GenerateToken(IReadOnlyDictionary<string, string> claims, string issuer = "", string audience = "", int expiresMinutes = 60, string encryptionAlgorithm = SecurityAlgorithms.HmacSha256Signature)
         {
             var payloadClaims = claims.Select(c => new Claim(c.Key, c.Value));
 
@@ -36,7 +36,9 @@ namespace CoreUtils
             {
                 Subject = new ClaimsIdentity(payloadClaims),
                 Expires = DateTime.UtcNow.AddMinutes(expiresMinutes),
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(this.secretKey), encryptionAlgorithm)
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(this.secretKey), encryptionAlgorithm),
+                Issuer = issuer,
+                Audience = audience
             };
 
             var token = tokenHandler.CreateToken(tokenDesc);
