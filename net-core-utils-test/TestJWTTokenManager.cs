@@ -22,7 +22,7 @@ namespace net_core_utils_test
             };
 
             // Act
-            string token = jwtManager.GenerateToken(claims, 1);
+            string token = jwtManager.GenerateToken(claims, "", "", 1);
 
             Debug.WriteLine($"Generated Token: {token}");
 

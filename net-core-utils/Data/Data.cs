@@ -2,8 +2,6 @@
 using System.Text;
 using System.ComponentModel;
 using System.Reflection;
-using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
 
 namespace CoreUtils;
@@ -300,6 +298,31 @@ public static class Data
         // Handles snake_case and kebab-case by splitting and capitalizing.
         return string.Concat(str.Split(new[] { '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
                                 .Select(s => s.Length > 0 ? char.ToUpper(s[0]) + s.Substring(1).ToLower() : ""));
+    }
+
+    public static string ToSnakeCase(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length + 4);
+        builder.Append(char.ToLowerInvariant(text[0]));
+        for (int i = 1; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (char.IsUpper(c))
+            {
+                builder.Append('_');
+                builder.Append(char.ToLowerInvariant(c));
+            }
+            else
+            {
+                builder.Append(c);
+            }
+        }
+        return builder.ToString();
     }
 
 

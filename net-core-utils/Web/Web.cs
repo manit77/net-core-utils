@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Specialized;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace CoreUtils
 {
@@ -81,6 +83,30 @@ namespace CoreUtils
                 nv[key] = System.Web.HttpUtility.UrlEncode(qstring[key]);
             }
             return nv;
+        }
+        
+        /// <summary>
+        /// Downloads the content of a website as a string asynchronously.
+        /// </summary>
+        /// <param name="url">The URL of the website to download.</param>
+        /// <returns>A task that represents the asynchronous operation. The task result contains the website content as a string, or an empty string if an error occurred.</returns>
+        public static async Task<string> DownloadWebsite(string url)
+        {
+            using (var client = new HttpClient())
+            {
+                try
+                {
+                    HttpResponseMessage response = await client.GetAsync(url);
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadAsStringAsync();
+                }
+                catch (HttpRequestException e)
+                {
+                    Console.WriteLine($"\nException Caught while downloading {url}!");
+                    Console.WriteLine("Message :{0} ", e.Message);
+                    return string.Empty;
+                }
+            }
         }
     }
 }
